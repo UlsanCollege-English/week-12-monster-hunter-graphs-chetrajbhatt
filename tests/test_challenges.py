@@ -32,7 +32,6 @@ def build_weighted_hunter_map(
 
         if a not in graph:
             graph[a] = {}
-
         if b not in graph:
             graph[b] = {}
 
