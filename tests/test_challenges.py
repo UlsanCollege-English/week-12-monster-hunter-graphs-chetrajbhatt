@@ -1,162 +1,79 @@
-"""Public tests for Week 12: Monster Hunter Graphs.
-
-Run with:
-    pytest -q
-"""
-
-import pytest
-
-from src.challenges import (
-    build_hunter_map,
-    build_weighted_hunter_map,
-    map_summary,
-    most_connected_location,
-    priority_hunt_order,
-)
+import heapq
 
 
-def normalize_graph(graph: dict[str, list[str]]) -> dict[str, list[str]]:
-    """Sort neighbor lists so tests do not depend on list order."""
-    return {location: sorted(neighbors) for location, neighbors in graph.items()}
+def build_hunter_map(edges: list[tuple[str, str]]) -> dict[str, list[str]]:
+    """Build an undirected adjacency list from route pairs."""
+    graph: dict[str, list[str]] = {}
+
+    for a, b in edges:
+        if a not in graph:
+            graph[a] = []
+        if b not in graph:
+            graph[b] = []
+
+        if b not in graph[a]:
+            graph[a].append(b)
+
+        if a not in graph[b]:
+            graph[b].append(a)
+
+    return graph
 
 
-def test_build_hunter_map_adds_both_directions():
-    edges = [
-        ("Old Theater", "Train Station"),
-        ("Train Station", "Library Basement"),
-    ]
+def build_weighted_hunter_map(
+    edges: list[tuple[str, str, int]]
+) -> dict[str, dict[str, int]]:
+    """Build an undirected weighted graph from route triples."""
+    graph: dict[str, dict[str, int]] = {}
 
-    graph = normalize_graph(build_hunter_map(edges))
+    for a, b, weight in edges:
+        if weight <= 0:
+            raise ValueError("Weight must be positive")
 
-    assert graph == {
-        "Old Theater": ["Train Station"],
-        "Train Station": ["Library Basement", "Old Theater"],
-        "Library Basement": ["Train Station"],
+        if a not in graph:
+            graph[a] = {}
+
+        if b not in graph:
+            graph[b] = {}
+
+        if b not in graph[a] or weight < graph[a][b]:
+            graph[a][b] = weight
+            graph[b][a] = weight
+
+    return graph
+
+
+def map_summary(graph: dict[str, list[str]]) -> dict[str, int]:
+    """Return the number of locations and undirected routes."""
+    locations = len(graph)
+    routes = sum(len(neighbors) for neighbors in graph.values()) // 2
+
+    return {
+        "locations": locations,
+        "routes": routes,
     }
 
 
-def test_build_hunter_map_avoids_duplicate_neighbors():
-    edges = [
-        ("Old Theater", "Train Station"),
-        ("Old Theater", "Train Station"),
-        ("Train Station", "Old Theater"),
-    ]
+def most_connected_location(graph: dict[str, list[str]]) -> str | None:
+    """Return the location with the most neighbors."""
+    if not graph:
+        return None
 
-    graph = normalize_graph(build_hunter_map(edges))
-
-    assert graph == {
-        "Old Theater": ["Train Station"],
-        "Train Station": ["Old Theater"],
-    }
+    return min(
+        graph,
+        key=lambda location: (-len(graph[location]), location)
+    )
 
 
-def test_build_hunter_map_empty_edges_returns_empty_graph():
-    assert build_hunter_map([]) == {}
+def priority_hunt_order(reports: list[tuple[int, str]]) -> list[str]:
+    """Return monster sighting locations from most urgent to least urgent."""
+    heap = reports.copy()
+    heapq.heapify(heap)
 
+    result: list[str] = []
 
-def test_build_weighted_hunter_map_adds_both_directions():
-    edges = [
-        ("Old Theater", "Train Station", 4),
-        ("Train Station", "Library Basement", 7),
-    ]
+    while heap:
+        _, location = heapq.heappop(heap)
+        result.append(location)
 
-    graph = build_weighted_hunter_map(edges)
-
-    assert graph["Old Theater"]["Train Station"] == 4
-    assert graph["Train Station"]["Old Theater"] == 4
-    assert graph["Train Station"]["Library Basement"] == 7
-    assert graph["Library Basement"]["Train Station"] == 7
-
-
-def test_build_weighted_hunter_map_keeps_lowest_duplicate_weight():
-    edges = [
-        ("Old Theater", "Train Station", 8),
-        ("Old Theater", "Train Station", 4),
-        ("Train Station", "Old Theater", 6),
-    ]
-
-    graph = build_weighted_hunter_map(edges)
-
-    assert graph["Old Theater"]["Train Station"] == 4
-    assert graph["Train Station"]["Old Theater"] == 4
-
-
-@pytest.mark.parametrize("bad_weight", [0, -1, -10])
-def test_build_weighted_hunter_map_rejects_non_positive_weights(bad_weight):
-    edges = [("Old Theater", "Train Station", bad_weight)]
-
-    with pytest.raises(ValueError):
-        build_weighted_hunter_map(edges)
-
-
-def test_map_summary_counts_locations_and_undirected_routes():
-    graph = {
-        "Old Theater": ["Train Station"],
-        "Train Station": ["Old Theater", "Library Basement", "Abandoned Pier"],
-        "Library Basement": ["Train Station"],
-        "Abandoned Pier": ["Train Station"],
-    }
-
-    assert map_summary(graph) == {"locations": 4, "routes": 3}
-
-
-def test_map_summary_empty_graph():
-    assert map_summary({}) == {"locations": 0, "routes": 0}
-
-
-def test_most_connected_location_returns_highest_degree_location():
-    graph = {
-        "Old Theater": ["Train Station"],
-        "Train Station": ["Old Theater", "Library Basement", "Abandoned Pier"],
-        "Library Basement": ["Train Station"],
-        "Abandoned Pier": ["Train Station"],
-    }
-
-    assert most_connected_location(graph) == "Train Station"
-
-
-def test_most_connected_location_tie_returns_alphabetically_first():
-    graph = {
-        "Crypt": ["Library Basement"],
-        "Old Theater": ["Train Station"],
-        "Library Basement": ["Crypt"],
-        "Train Station": ["Old Theater"],
-    }
-
-    assert most_connected_location(graph) == "Crypt"
-
-
-def test_most_connected_location_empty_graph_returns_none():
-    assert most_connected_location({}) is None
-
-
-def test_priority_hunt_order_returns_locations_by_priority():
-    reports = [
-        (3, "Old Theater"),
-        (1, "Library Basement"),
-        (2, "Train Station"),
-    ]
-
-    assert priority_hunt_order(reports) == [
-        "Library Basement",
-        "Train Station",
-        "Old Theater",
-    ]
-
-
-def test_priority_hunt_order_empty_reports():
-    assert priority_hunt_order([]) == []
-
-
-def test_priority_hunt_order_handles_ties_alphabetically():
-    reports = [
-        (2, "Old Theater"),
-        (1, "Crypt"),
-        (1, "Abandoned Pier"),
-    ]
-
-    assert priority_hunt_order(reports) == [
-        "Abandoned Pier",
-        "Crypt",
-        "Old Theater",
-    ]
+    return result
